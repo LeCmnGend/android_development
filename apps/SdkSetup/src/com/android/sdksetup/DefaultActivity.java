@@ -71,6 +71,10 @@ public class DefaultActivity extends Activity {
 
             TelephonyManager mTelephony = getApplicationContext().getSystemService(TelephonyManager.class);
             mTelephony.setPreferredNetworkTypeBitmask(TelephonyManager.NETWORK_TYPE_BITMASK_NR);
+
+            // Disable offload wifi tethering
+            Settings.Global.putInt(getContentResolver(), Settings.Global.TETHER_OFFLOAD_DISABLED, 1);
+
         }
 
         // remove this activity from the package manager.
