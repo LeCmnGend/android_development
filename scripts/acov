@@ -19,10 +19,13 @@
 #
 # 1. sudo apt-get install lcov
 # 2. Build application/library with coverage information.
-# 3. Push the new binaries to the device.
-# 4. Run tests with the additional environment variables:
-#     * GCOV_PREFIX=/data/local/tmp/gcov
-#     * GCOV_PREFIX_STRIP=`echo $(ANDROID_BUILD_TOP) | grep -o / | wc -l`
+#     * make NATIVE_COVERAGE=true NATIVE_COVERAGE_PATHS='*'
+# 3. Push the new binaries to the device with adb sync.
+# (Optional): Run `acov --clean-device`. This will reset coverage for everything
+#      on the device.
+# 4. Run tests.
+# (Optional): Run `acov --flush`. This will dump coverage from all processes
+#      running on the device.
 # 5. Run `acov`.
 #
 # acov will pull all coverage information from the device, push it to the right
