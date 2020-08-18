@@ -122,3 +122,15 @@ $(call dist-for-goals,sdk win_sdk,$(full_target):data/annotations.zip)
 # ============ SDK AIDL ============
 $(eval $(call copy-one-file,$(FRAMEWORK_AIDL),$(TARGET_OUT_COMMON_INTERMEDIATES)/PACKAGING/framework.aidl))
 ALL_SDK_FILES += $(TARGET_OUT_COMMON_INTERMEDIATES)/PACKAGING/framework.aidl
+
+# ============ System SDK ============
+full_target := $(call intermediates-dir-for,JAVA_LIBRARIES,android_system_stubs_current,,COMMON)/classes.jar
+
+.PHONY: android_system_stubs
+android_system_stubs: $(full_target)
+
+# ============ Test SDK ============
+full_target := $(call intermediates-dir-for,JAVA_LIBRARIES,android_test_stubs_current,,COMMON)/classes.jar
+
+.PHONY: android_test_stubs
+android_test_stubs: $(full_target)
