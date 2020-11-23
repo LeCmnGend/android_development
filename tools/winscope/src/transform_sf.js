@@ -47,7 +47,6 @@ function transform_layer(layer) {
     var result = layer.bounds;
     var tx = layer.position ? layer.position.x || 0 : 0;
     var ty = layer.position ? layer.position.y || 0 : 0;
-    result = offset_to(result, 0, 0);
     result.label = layer.name;
     result.transform = layer.transform;
     result.transform.tx = tx;
