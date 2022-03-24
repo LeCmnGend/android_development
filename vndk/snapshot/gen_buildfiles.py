@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -60,32 +60,12 @@ class GenBuildFile(object):
     """
     INDENT = '    '
     ETC_MODULES = [
+        'ld.config.txt',
         'llndk.libraries.txt',
         'vndksp.libraries.txt',
         'vndkcore.libraries.txt',
         'vndkprivate.libraries.txt'
     ]
-
-    """Some vendor prebuilts reference libprotobuf-cpp-lite.so and
-    libprotobuf-cpp-full.so and expect the 3.0.0-beta3 version.
-    The new version of protobuf will be installed as
-    /vendor/lib64/libprotobuf-cpp-lite-3.9.1.so.  The VNDK doesn't
-    help here because we compile old devices against the current
-    branch and not an old VNDK snapshot.  We need to continue to
-    provide a vendor libprotobuf-cpp-lite.so until all products in
-    the current branch get updated prebuilts or are obsoleted.
-
-    VENDOR_COMPAT is a dictionary that has VNDK versions as keys and
-    the list of (library name string, shared libs list) as values.
-    """
-    VENDOR_COMPAT = {
-        28: [
-            ('libprotobuf-cpp-lite',
-                ['libc++', 'libc', 'libdl', 'liblog', 'libm', 'libz']),
-            ('libprotobuf-cpp-full',
-                ['libc++', 'libc', 'libdl', 'liblog', 'libm', 'libz']),
-        ]
-    }
 
     def __init__(self, install_dir, vndk_version):
         """GenBuildFile constructor.
@@ -145,28 +125,26 @@ class GenBuildFile(object):
         notice_paths = glob.glob(
             os.path.join(self._install_dir, utils.NOTICE_FILES_DIR_PATH,
                          '*.txt'))
-        return sorted(os.path.splitext(os.path.basename(p))[0] for p in notice_paths)
+        return [os.path.splitext(os.path.basename(p))[0] for p in notice_paths]
 
     def generate_root_android_bp(self):
         """Autogenerates Android.bp."""
 
         logging.info('Generating Android.bp for snapshot v{}'.format(
             self._vndk_version))
-        prebuilt_buildrules = []
+        etc_buildrules = []
         for prebuilt in self.ETC_MODULES:
-            prebuilt_buildrules.append(self._gen_etc_prebuilt(prebuilt))
-
-        if self._vndk_version in self.VENDOR_COMPAT:
-            prebuilt_buildrules.append('// Defining prebuilt libraries '
-                        'for the compatibility of old vendor modules')
-            for vendor_compat_lib_info in self.VENDOR_COMPAT[self._vndk_version]:
-                prebuilt_buildrules.append(
-                    self._gen_prebuilt_library_shared(vendor_compat_lib_info))
+            # ld.config.VER.txt is not installed as a prebuilt but is built and
+            # installed from thesource tree at the time the VNDK snapshot is
+            # installed to the system.img.
+            if prebuilt == 'ld.config.txt':
+                continue
+            etc_buildrules.append(self._gen_etc_prebuilt(prebuilt))
 
         with open(self._root_bpfile, 'w') as bpfile:
             bpfile.write(self._gen_autogen_msg('/'))
             bpfile.write('\n')
-            bpfile.write('\n'.join(prebuilt_buildrules))
+            bpfile.write('\n'.join(etc_buildrules))
             bpfile.write('\n')
 
         logging.info('Successfully generated {}'.format(self._root_bpfile))
@@ -241,6 +219,8 @@ class GenBuildFile(object):
 
             with open(bpfile_path, 'w') as bpfile:
                 bpfile.write(self._gen_autogen_msg('/'))
+                bpfile.write('\n')
+                bpfile.write(self._gen_bp_phony(arch, is_binder32, module_names))
                 bpfile.write('\n')
                 bpfile.write('\n'.join(vndk_core_buildrules))
                 bpfile.write('\n')
@@ -339,56 +319,6 @@ class GenBuildFile(object):
                          '}}\n'.format(ind=self.INDENT))
         return prebuilt_etc
 
-    def _gen_prebuilt_library_shared(self, prebuilt_lib_info):
-        """Generates cc_prebuilt_library_shared modules for the old vendor
-        compatibility.
-
-        Some vendor modules still require old version of libraries that is not
-        available from the current source tree. To provide the old copy of the
-        libraries, use the vndk snapshot.
-
-        Args:
-            prebuilt_lib_info: pair of (string, list of strings), name of the
-                        prebuilt library and the list of shared libs for it.
-        """
-        lib_name = prebuilt_lib_info[0]
-        shared_libs = prebuilt_lib_info[1]
-
-        shared_libs_prop = ''
-        if shared_libs:
-            shared_libs_prop = ('{ind}shared_libs: [\n'.format(ind=self.INDENT))
-            for lib in shared_libs:
-                shared_libs_prop += ('{ind}{ind}"{lib}",\n'.format(
-                                        ind=self.INDENT, lib=lib))
-            shared_libs_prop += ('{ind}],\n'.format(ind=self.INDENT))
-
-        cc_prebuilt_libraries = ('cc_prebuilt_library_shared {{\n'
-                                 '{ind}name: "{name}-vendorcompat",\n'
-                                 '{ind}stem: "{name}",\n'
-                                 '{ind}vendor: true,\n'
-                                 '{ind}// These are already stripped, and '
-                                 'restripping them just issues diagnostics.\n'
-                                 '{ind}strip: {{\n'
-                                 '{ind}{ind}none: true,\n'
-                                 '{ind}}},\n'
-                                 '{shared_libs}'
-                                 '{ind}target: {{\n'.format(
-                                    ind=self.INDENT,
-                                    name=lib_name,
-                                    shared_libs=shared_libs_prop))
-        src_paths = utils.find(self._install_dir, [lib_name+'.so'])
-        for src in src_paths:
-            dirs = src.split(os.path.sep)
-            if len(dirs) < 3 or not dirs[1].startswith('arch-{}-'.format(dirs[0])):
-                continue
-            cc_prebuilt_libraries += ('{ind}{ind}android_{arch}: {{\n'
-                                      '{ind}{ind}{ind}srcs: ["{src}"],\n'
-                                      '{ind}{ind}}},\n'.format(
-                                        ind=self.INDENT, arch=dirs[0], src=src))
-        cc_prebuilt_libraries += ('{ind}}},\n'
-                                  '}}\n'.format(ind=self.INDENT))
-        return cc_prebuilt_libraries
-
     def _gen_notice_filegroup(self, module):
         """Generates a notice filegroup build rule for a given module.
 
@@ -413,6 +343,54 @@ class GenBuildFile(object):
         return 'vndk-v{ver}-{module}-notice'.format(
             ver=self._vndk_version, module=module)
 
+    def _gen_bp_phony(self, arch, is_binder32, module_names):
+        """Generates build rule for phony package 'vndk_v{ver}_{arch}'.
+
+        Args:
+          arch: string, VNDK snapshot arch (e.g. 'arm64')
+          is_binder32: bool, True if binder interface is 32-bit
+          module_names: dict, module names for given prebuilts
+        """
+
+        required = []
+        for prebuilts in (self._vndk_core[arch], self._vndk_sp[arch]):
+            for prebuilt in prebuilts:
+                required.append(
+                    self._get_versioned_name(
+                        prebuilt,
+                        arch,
+                        is_binder32=is_binder32,
+                        module_names=module_names))
+
+        for prebuilt in self.ETC_MODULES:
+            required.append(
+                self._get_versioned_name(
+                    prebuilt,
+                    None,
+                    is_etc=True,
+                    is_binder32=is_binder32,
+                    module_names=module_names))
+
+        required_str = ['"{}",'.format(prebuilt) for prebuilt in required]
+        required_formatted = '\n{ind}{ind}'.format(
+            ind=self.INDENT).join(required_str)
+        required_buildrule = ('{ind}required: [\n'
+                              '{ind}{ind}{required_formatted}\n'
+                              '{ind}],\n'.format(
+                                  ind=self.INDENT,
+                                  required_formatted=required_formatted))
+        binder_suffix = '_{}'.format(utils.BINDER32) if is_binder32 else ''
+
+        return ('phony {{\n'
+                '{ind}name: "vndk_v{ver}_{arch}{binder_suffix}",\n'
+                '{required_buildrule}'
+                '}}\n'.format(
+                    ind=self.INDENT,
+                    ver=self._vndk_version,
+                    arch=arch,
+                    binder_suffix=binder_suffix,
+                    required_buildrule=required_buildrule))
+
     def _gen_vndk_shared_prebuilts(self,
                                    prebuilts,
                                    arch,
@@ -431,14 +409,13 @@ class GenBuildFile(object):
 
         build_rules = []
         for prebuilt in prebuilts:
-            bp_module = self._gen_vndk_shared_prebuilt(
-                prebuilt,
-                arch,
-                is_vndk_sp=is_vndk_sp,
-                is_binder32=is_binder32,
-                module_names=module_names)
-            if bp_module:
-                build_rules.append(bp_module)
+            build_rules.append(
+                self._gen_vndk_shared_prebuilt(
+                    prebuilt,
+                    arch,
+                    is_vndk_sp=is_vndk_sp,
+                    is_binder32=is_binder32,
+                    module_names=module_names))
         return build_rules
 
     def _gen_vndk_shared_prebuilt(self,
@@ -447,8 +424,7 @@ class GenBuildFile(object):
                                   is_vndk_sp,
                                   is_binder32,
                                   module_names):
-        """Returns build rule for given prebuilt, or an empty string if the
-        prebuilt is invalid (e.g. srcs doesn't exist).
+        """Returns build rule for given prebuilt.
 
         Args:
           prebuilt: string, name of prebuilt object
@@ -471,7 +447,7 @@ class GenBuildFile(object):
                     notice_filegroup=self._get_notice_filegroup_name(prebuilt))
             return notice
 
-        def get_arch_props(prebuilt, arch, src_paths):
+        def get_arch_props(prebuilt, arch):
             """Returns build rule for arch specific srcs.
 
             e.g.,
@@ -495,9 +471,12 @@ class GenBuildFile(object):
             Args:
               prebuilt: string, name of prebuilt object
               arch: string, VNDK snapshot arch (e.g. 'arm64')
-              src_paths: list of string paths, prebuilt source paths
             """
             arch_props = '{ind}arch: {{\n'.format(ind=self.INDENT)
+            src_paths = utils.find(src_root, [prebuilt])
+            # filter out paths under 'binder32' subdirectory
+            src_paths = filter(lambda src: not src.startswith(utils.BINDER32),
+                               src_paths)
 
             def list_to_prop_value(l, name):
                 if len(l) == 0:
@@ -564,15 +543,6 @@ class GenBuildFile(object):
         if is_binder32 and self._vndk_version >= 28:
             src_root = os.path.join(src_root, utils.BINDER32)
 
-        src_paths = utils.find(src_root, [prebuilt])
-        # filter out paths under 'binder32' subdirectory
-        src_paths = list(filter(lambda src: not src.startswith(utils.BINDER32),
-            src_paths))
-        # This prebuilt is invalid if no srcs are found.
-        if not src_paths:
-            logging.info('No srcs found for {}; skipping'.format(prebuilt))
-            return ""
-
         if prebuilt in module_names:
             name = module_names[prebuilt]
         else:
@@ -586,7 +556,7 @@ class GenBuildFile(object):
                 ind=self.INDENT)
 
         notice = get_notice_file(prebuilt)
-        arch_props = get_arch_props(prebuilt, arch, src_paths)
+        arch_props = get_arch_props(prebuilt, arch)
 
         binder32bit = ''
         if is_binder32:

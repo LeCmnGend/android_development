@@ -99,20 +99,13 @@ ELFSoFileParser<T>::ELFSoFileParser(const llvm::object::ELFObjectFile<T> *obj) {
 
     ElfSymbolIR::ElfSymbolBinding symbol_binding =
         LLVMToIRSymbolBinding(elf_sym->getBinding());
-    std::string symbol_name(UnWrap(symbol_it.getName()));
+    std::string symbol_name = UnWrap(symbol_it.getName());
 
-    switch (symbol_it.getELFType()) {
-      case llvm::ELF::STT_OBJECT:
-      case llvm::ELF::STT_COMMON:
-      case llvm::ELF::STT_TLS:
-        exported_symbols_->AddVar(symbol_name, symbol_binding);
-        break;
-      case llvm::ELF::STT_FUNC:
-      case llvm::ELF::STT_GNU_IFUNC:
-        exported_symbols_->AddFunction(symbol_name, symbol_binding);
-        break;
-      default:
-        break;
+    llvm::object::SymbolRef::Type type = UnWrap(symbol_it.getType());
+    if (type == llvm::object::SymbolRef::Type::ST_Function) {
+      exported_symbols_->AddFunction(symbol_name, symbol_binding);
+    } else if (type == llvm::object::SymbolRef::Type::ST_Data) {
+      exported_symbols_->AddVar(symbol_name, symbol_binding);
     }
   }
 }

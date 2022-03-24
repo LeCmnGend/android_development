@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -52,7 +52,7 @@ def check_call(cmd):
 
 def check_output(cmd):
     logging.debug('Running `{}`'.format(' '.join(cmd)))
-    output = subprocess.check_output(cmd, encoding='utf-8')
+    output = subprocess.check_output(cmd)
     logging.debug('Output: `{}`'.format(output))
     return output
 
@@ -94,7 +94,7 @@ def get_snapshot_archs(install_dir):
         basename = os.path.basename(file)
         if os.path.isdir(file) and basename != COMMON_DIR_NAME:
             archs.append(basename)
-    return sorted(archs)
+    return archs
 
 
 def prebuilt_arch_from_path(path):
